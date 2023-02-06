@@ -4,8 +4,6 @@ using System.Reflection;
 
 namespace RizzziGit.TCPMessaging;
 
-using Socket = System.Net.Sockets.Socket;
-
 public class SimulatneousAcceptConnectionCallsException : Exception
 {
   public SimulatneousAcceptConnectionCallsException() : base("AcceptConnection() calls may not be simultaneous.") { }

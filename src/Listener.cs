@@ -3,8 +3,6 @@ using System.Net.Sockets;
 
 namespace RizzziGit.TCPMessaging;
 
-using Socket = System.Net.Sockets.Socket;
-
 public class ServerListenException : Exception { public ServerListenException() : base("Server is already listening") { } }
 
 public class ServerListener

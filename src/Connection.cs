@@ -4,8 +4,6 @@ using System.Text;
 
 namespace RizzziGit.TCPMessaging;
 
-using Socket = System.Net.Sockets.Socket;
-
 public class SimulatneousReceiveMessageCallsException : Exception
 {
   public SimulatneousReceiveMessageCallsException() : base("ReceiveMessage() calls may not be simultaneous.") { }
