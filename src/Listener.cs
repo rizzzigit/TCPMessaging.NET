@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 
-namespace RizzziGit.TCPMessaging;
+namespace RizzziGit.TCP.Messaging;
 
 public class ServerListenException : Exception { public ServerListenException() : base("Server is already listening") { } }
 

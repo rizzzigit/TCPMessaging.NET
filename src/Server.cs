@@ -2,7 +2,7 @@
 using System.Net.Sockets;
 using System.Reflection;
 
-namespace RizzziGit.TCPMessaging;
+namespace RizzziGit.TCP.Messaging;
 
 public class SimulatneousAcceptConnectionCallsException : Exception
 {

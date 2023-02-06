@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
-namespace RizzziGit.TCPMessaging;
+namespace RizzziGit.TCP.Messaging;
 
 public class SimulatneousReceiveMessageCallsException : Exception
 {
@@ -19,11 +19,38 @@ public class ReceiveMessageCancelledException : Exception
   public ReceiveMessageCancelledException() : base("Socket connection was closed.") { }
 }
 
+public class Request {
+  public static Buffer Serialize(Request request)
+  {
+    Buffer buffer = Buffer.Allocate(request.Token.Length + request.ID.Length + request.Parameters.Length);
+
+    return buffer;
+  }
+
+  public Request(Connection connection, Buffer token, Buffer id, Buffer parameters)
+  {
+    Token = token;
+    ID = id;
+    Parameters = parameters;
+  }
+
+  public Buffer Token { get; private set; }
+  public Buffer ID { get; private set; }
+  public Buffer Parameters { get; private set; }
+}
+
+public class Response
+{
+  public Response(Connection connection, Request request, Buffer type, Buffer returned)
+  {
+  }
+}
+
 public class Connection
 {
   public enum Command
   {
-    Hello, Message, Bye
+    Hello, Message, Request, Response, Bye
   }
 
   internal delegate void ConnectionHandler(Connection connection);

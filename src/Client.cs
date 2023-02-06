@@ -1,6 +1,6 @@
 using System.Net;
 
-namespace RizzziGit.TCPMessaging;
+namespace RizzziGit.TCP.Messaging;
 
 public class Client
 {
