@@ -12,6 +12,12 @@
 
     <SelfContained>false</SelfContained>
     <DebugType>None</DebugType>
+
+    <AssemblyTitle>RizzziGit.TCP.Messaging</AssemblyTitle>
+    <Product>TCP.Messaging</Product>
+    <Company>RizzziGit</Company>
+    <Version>1.0.0</Version>
+    <FileVersion>1.0.0</FileVersion>
   </PropertyGroup>
 
 </Project>
