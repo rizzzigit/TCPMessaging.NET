@@ -11,7 +11,7 @@
     <RootNamespace>RizzziGit.TCP.Messaging</RootNamespace>
 
     <SelfContained>false</SelfContained>
-    <DebugType>None</DebugType>
+    <DebugType>Portable</DebugType>
 
     <AssemblyTitle>RizzziGit.TCP.Messaging</AssemblyTitle>
     <Product>TCP.Messaging</Product>
