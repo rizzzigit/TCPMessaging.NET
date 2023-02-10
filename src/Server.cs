@@ -1,6 +1,5 @@
 ﻿using System.Net;
 using System.Net.Sockets;
-using System.Reflection;
 
 namespace RizzziGit.TCP.Messaging;
 
@@ -24,11 +23,11 @@ public class Server
   }
 
   public ServerListener[] Listeners { get; private set; }
-  public Dictionary<string, Connection> Connections { get; private set; }
-  private Queue<Connection> ConnectionQueue;
-  private TaskCompletionSource<Connection>? ConnectionWaiter;
+  public Dictionary<Buffer, ServerConnection> Connections { get; private set; }
+  private Queue<ServerConnection> ConnectionQueue;
+  private TaskCompletionSource<ServerConnection>? ConnectionWaiter;
 
-  public async Task<Connection> AcceptConnection()
+  public async Task<ServerConnection> AcceptConnection()
   {
     if (ConnectionQueue.Count != 0)
     {
@@ -58,15 +57,15 @@ public class Server
       return;
     }
 
-    Connection connection = new(endpoint, socket);
+    ServerConnection connection = new(endpoint, socket);
+    string connectionId = connection.ID.ToString();
     connection.Disconnected += (sender, args) => Connections.Remove(connection.ID);
-
     Connections.Add(connection.ID, connection);
     connection.StartReceivingCommands();
     PushConnection(connection);
   }
 
-  private void PushConnection(Connection connection)
+  private void PushConnection(ServerConnection connection)
   {
     if (ConnectionWaiter != null)
     {
@@ -90,6 +89,7 @@ public class Server
         ConnectionWaiter.SetException(new AcceptConnectionCancelledException());
       }
     };
+    listener.ClientConnected += OnClientConnected;
 
     return listener;
   }
