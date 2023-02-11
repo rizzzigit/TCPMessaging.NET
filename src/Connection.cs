@@ -19,16 +19,36 @@ public class ReceiveMessageCancelledException : Exception
   public ReceiveMessageCancelledException() : base("Socket connection was closed.") { }
 }
 
-public class PendingRequestEntry
+public class ReceiveRequestCancelledException : Exception
 {
-  public PendingRequestEntry(Request request, TaskCompletionSource<Buffer> task)
+  public ReceiveRequestCancelledException() : base("Socket connection was closed.") { }
+}
+
+public class PendingRequest
+{
+  public PendingRequest(Request request, TaskCompletionSource<Buffer> source)
   {
     Request = request;
-    Task = task;
+    Source = source;
   }
 
   public Request Request { get; private set; }
-  public TaskCompletionSource<Buffer> Task { get; private set; }
+  private TaskCompletionSource<Buffer> Source;
+
+  public void SetResult(Buffer buffer)
+  {
+    Source.SetResult(buffer);
+  }
+
+  public void SetException(Exception exception)
+  {
+    Source.SetException(exception);
+  }
+
+  public Task<Buffer> GetTask()
+  {
+    return Source.Task;
+  }
 }
 
 public class Request
@@ -84,7 +104,12 @@ public class Response
   public Buffer Result { get; private set; }
 }
 
-public abstract class Connection
+public class CommandReceivedEventHandlerArgs : EventArgs
+{
+  public bool PreventDefault { get; set; } = false;
+}
+
+public class Connection
 {
   public enum Command
   {
@@ -93,13 +118,16 @@ public abstract class Connection
 
   internal delegate void ConnectionHandler(Connection connection);
 
-  internal protected Connection(IPEndPoint ipEndPoint, Socket? socket)
+  internal Connection(IPEndPoint ipEndPoint, Socket? socket)
   {
     ID = Buffer.Random(8);
     Socket = socket ?? new(ipEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
     MessageQueue = new();
     EndPoint = ipEndPoint;
+
     PendingRequests = new();
+    RequestQueue = new();
+    RequestWaiter = new();
   }
 
   private Socket Socket { get; set; }
@@ -108,13 +136,13 @@ public abstract class Connection
   public IPEndPoint EndPoint { get; private set; }
   public IPEndPoint? RemoteEndpoint { get; private set; }
 
-  public bool Running { get; private set; }
-  public bool Ready { get; private set; }
+  public bool IsRunning { get; private set; }
+  public bool IsReady { get; private set; }
 
   public event EventHandler? Connected;
   public async Task Connect()
   {
-    if (Running)
+    if (IsRunning)
     {
       return;
     }
@@ -161,9 +189,13 @@ public abstract class Connection
   }
 
   private TaskCompletionSource? ByeWaiter;
+
   private TaskCompletionSource<Buffer>? MessageWaiter;
   private Queue<Buffer> MessageQueue;
-  private Dictionary<string, PendingRequestEntry> PendingRequests;
+
+  private Dictionary<string, PendingRequest> PendingRequests;
+  private Queue<PendingRequest> RequestQueue;
+  private Queue<TaskCompletionSource<PendingRequest>> RequestWaiter;
 
   private async Task<Buffer?> Read()
   {
@@ -184,16 +216,15 @@ public abstract class Connection
 
   public async void StartReceivingCommands()
   {
-    if (Running)
+    if (IsRunning)
     {
       return;
     }
 
-    Running = true;
+    IsRunning = true;
     Buffer sink = Buffer.Allocate(0);
     await SendCommand(Command.Hello, Buffer.Allocate(0));
     RemoteEndpoint = (IPEndPoint?)Socket.RemoteEndPoint;
-    Console.WriteLine(this.ToString());
     while (true)
     {
       Buffer? read = await Read();
@@ -233,42 +264,63 @@ public abstract class Connection
       }
     }
     RemoteEndpoint = null;
-    Running = false;
-    Ready = false;
+    IsRunning = false;
+    IsReady = false;
 
     if (MessageWaiter != null)
     {
       MessageWaiter.SetException(new ReceiveMessageCancelledException());
+      MessageWaiter = null;
     }
 
     if (ByeWaiter != null)
     {
       ByeWaiter.SetResult();
+      ByeWaiter = null;
+    }
+
+    while (RequestWaiter.Count > 0)
+    {
+      RequestWaiter.Dequeue().SetException(new ReceiveRequestCancelledException());
     }
 
     await Disconnect(false);
   }
 
+  public delegate void CommandReceivedEventHandler(Command command, Buffer data, CommandReceivedEventHandlerArgs args);
+  public event CommandReceivedEventHandler? CommandReceived;
+
   private async void ReceiveCommand(Buffer data)
   {
-    Console.WriteLine($"{ID.ToHex()} RECEIVED: {(Command)data[0]} -> {data.Slice(1, data.Length).ToHex()}");
-    switch ((Command)data[0])
+    Command command = (Command)data[0];
+    data = data.Slice(1, data.Length);
+    CommandReceivedEventHandlerArgs args = new();
+    CommandReceived?.Invoke(command, data, args);
+    if (args.PreventDefault)
     {
-      case Command.Hello: Ready = true; break;
-      case Command.Request: PushRequest(data.Slice(1, data.Length)); break;
-      case Command.Response: PushResponse(data.Slice(1, data.Length)); break;
-      case Command.Message: Push(data.Slice(1, data.Length)); break;
+      return;
+    }
+
+    switch (command)
+    {
+      case Command.Hello: IsReady = true; break;
+      case Command.Request: PushRequest(data); break;
+      case Command.Response: PushResponse(data); break;
+      case Command.Message: Push(data); break;
       case Command.Bye: await PushBye(); break;
     }
   }
+
+  public delegate void CommandSentEventHandler(Command command, Buffer data);
+  public event CommandSentEventHandler? CommandSent;
 
   private async Task SendCommand(Command command, Buffer data)
   {
     Buffer buffer = Buffer.Concat(new Buffer[] { Buffer.FromByteArray(new byte[] { (byte)command }), data });
     Buffer lengthBuffer = Buffer.FromByteArray((BitConverter.IsLittleEndian ? BitConverter.GetBytes(buffer.Length).Reverse().ToArray() : BitConverter.GetBytes(buffer.Length)));
 
-    Console.WriteLine($"{ID.ToHex()} SENT: {command} -> {data.ToHex()}");
     await Write(Buffer.Concat(new Buffer[] { Buffer.FromByteArray(new byte[] { (byte)lengthBuffer.Length }), lengthBuffer, buffer }));
+    CommandSent?.Invoke(command, data);
   }
 
   private void Push(Buffer message)
@@ -334,7 +386,7 @@ public abstract class Connection
   {
     Response response = Response.Deserialize(buffer);
     string responseId = response.ID.ToString();
-    PendingRequests.TryGetValue(responseId, out PendingRequestEntry? PendingRequestEntry);
+    PendingRequests.TryGetValue(responseId, out PendingRequest? PendingRequestEntry);
 
     if (PendingRequestEntry == null)
     {
@@ -345,11 +397,11 @@ public abstract class Connection
     switch (response.Type)
     {
       case ResponseType.Data:
-        PendingRequestEntry.Task.SetResult(response.Result);
+        PendingRequestEntry.SetResult(response.Result);
         break;
 
       case ResponseType.Exception:
-        PendingRequestEntry.Task.SetException(new Exception(response.Result.ToString()));
+        PendingRequestEntry.SetException(new Exception(response.Result.ToString()));
         break;
     }
   }
@@ -362,11 +414,27 @@ public abstract class Connection
     }
 
     Request request = new(Buffer.Random(4), token, parameters);
-    PendingRequestEntry requestEntry = new(request, new());
+    TaskCompletionSource<Buffer> source = new();
+    PendingRequest requestEntry = new(request, source);
     PendingRequests.Add(request.ID.ToString(), requestEntry);
 
     await SendCommand(Command.Request, Request.Serialize(request));
-    return await requestEntry.Task.Task;
+    return await source.Task;
+  }
+
+  public async Task<PendingRequest> ReceivePendingRequest()
+  {
+    if (RequestQueue.Count > 0)
+    {
+      return RequestQueue.Dequeue();
+    }
+    else
+    {
+      TaskCompletionSource<PendingRequest> source = new();
+      RequestWaiter.Enqueue(source);
+
+      return await source.Task;
+    }
   }
 
   private async void PushRequest(Buffer buffer)
@@ -377,12 +445,23 @@ public abstract class Connection
     }
 
     Request request = Request.Deserialize(buffer);
+    TaskCompletionSource<Buffer> source = new();
+    PendingRequest pendingRequest = new(request, source);
+
+    if (RequestWaiter.Count > 0)
+    {
+      RequestWaiter.Dequeue().SetResult(pendingRequest);
+    }
+    else
+    {
+      RequestQueue.Enqueue(pendingRequest);
+    }
+
     ResponseType type;
     Buffer result;
-
     try
     {
-      result = await ProcessRequest(request);
+      result = await source.Task;
       type = ResponseType.Data;
     }
     catch (Exception exception)
@@ -394,6 +473,4 @@ public abstract class Connection
     Response response = new(type, request.ID, result);
     await SendCommand(Command.Response, Response.Serialize(response));
   }
-
-  protected abstract Task<Buffer> ProcessRequest(Request request);
 }

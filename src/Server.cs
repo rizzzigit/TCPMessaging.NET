@@ -23,11 +23,11 @@ public class Server
   }
 
   public ServerListener[] Listeners { get; private set; }
-  public Dictionary<Buffer, ServerConnection> Connections { get; private set; }
-  private Queue<ServerConnection> ConnectionQueue;
-  private TaskCompletionSource<ServerConnection>? ConnectionWaiter;
+  public Dictionary<Buffer, Connection> Connections { get; private set; }
+  private Queue<Connection> ConnectionQueue;
+  private TaskCompletionSource<Connection>? ConnectionWaiter;
 
-  public async Task<ServerConnection> AcceptConnection()
+  public async Task<Connection> AcceptConnection()
   {
     if (ConnectionQueue.Count != 0)
     {
@@ -57,7 +57,7 @@ public class Server
       return;
     }
 
-    ServerConnection connection = new(endpoint, socket);
+    Connection connection = new(endpoint, socket);
     string connectionId = connection.ID.ToString();
     connection.Disconnected += (sender, args) => Connections.Remove(connection.ID);
     Connections.Add(connection.ID, connection);
@@ -65,7 +65,7 @@ public class Server
     PushConnection(connection);
   }
 
-  private void PushConnection(ServerConnection connection)
+  private void PushConnection(Connection connection)
   {
     if (ConnectionWaiter != null)
     {

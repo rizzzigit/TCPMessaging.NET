@@ -7,16 +7,16 @@ public class Client
 
   public Client()
   {
-    Connections = new ClientConnection[0];
+    Connections = new Connection[0];
   }
 
-  private ClientConnection[] Connections;
+  private Connection[] Connections;
 
-  public async Task<ClientConnection> Connect(IPEndPoint ipEndPoint)
+  public async Task<Connection> Connect(IPEndPoint ipEndPoint)
   {
-    ClientConnection connection = new(ipEndPoint);
+    Connection connection = new(ipEndPoint, null);
     connection.Connected += (sender, args) => Connections = Connections.Append(connection).ToArray();
-    connection.Disconnected  += (sender, args) => Connections = Connections.Except(new ClientConnection[] { connection }).ToArray();
+    connection.Disconnected  += (sender, args) => Connections = Connections.Except(new Connection[] { connection }).ToArray();
 
     await connection.Connect();
     return connection;
