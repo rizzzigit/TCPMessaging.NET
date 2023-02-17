@@ -77,12 +77,22 @@ public class Server
     }
   }
 
+  public delegate void StartedListeningEventHandler(ServerListener listener);
+  public event StartedListeningEventHandler? StartedListening;
+
+  public delegate void StoppedListeningEventHandler(ServerListener listener);
+  public event StoppedListeningEventHandler? StoppedListening;
+
   public ServerListener Listen(IPEndPoint endPoint)
   {
     ServerListener listener = new(this, endPoint);
-    listener.StartedListening += () => Listeners = Listeners.Append(listener).ToArray();;
+    listener.StartedListening += () => {
+      Listeners = Listeners.Append(listener).ToArray();
+      StartedListening?.Invoke(listener);
+    };
     listener.StoppedListening += () => {
       Listeners.Except(new ServerListener[] { listener }).ToArray();
+      StoppedListening?.Invoke(listener);
 
       if ((Listeners.Length == 0) && (ConnectionWaiter != null))
       {
