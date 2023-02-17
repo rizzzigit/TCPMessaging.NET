@@ -4,106 +4,6 @@ using System.Text;
 
 namespace RizzziGit.TCP.Messaging;
 
-public class SimulatneousReceiveMessageCallsException : Exception
-{
-  public SimulatneousReceiveMessageCallsException() : base("ReceiveMessage() calls may not be simultaneous.") { }
-}
-
-public class DisconnectCallException : Exception
-{
-  public DisconnectCallException() : base("Disconnect() call may only be called once.") { }
-}
-
-public class ReceiveMessageCancelledException : Exception
-{
-  public ReceiveMessageCancelledException() : base("Socket connection was closed.") { }
-}
-
-public class ReceiveRequestCancelledException : Exception
-{
-  public ReceiveRequestCancelledException() : base("Socket connection was closed.") { }
-}
-
-public class PendingRequest
-{
-  public PendingRequest(Request request, TaskCompletionSource<Buffer> source)
-  {
-    Request = request;
-    Source = source;
-  }
-
-  public Request Request { get; private set; }
-  private TaskCompletionSource<Buffer> Source;
-
-  public void SetResult(Buffer buffer)
-  {
-    Source.SetResult(buffer);
-  }
-
-  public void SetException(Exception exception)
-  {
-    Source.SetException(exception);
-  }
-
-  public Task<Buffer> GetTask()
-  {
-    return Source.Task;
-  }
-}
-
-public class Request
-{
-  public static Buffer Serialize(Request request)
-  {
-    return Buffer.Concat(new Buffer[] { request.ID, request.Token, request.Parameters });
-  }
-
-  public static Request Deserialize(Buffer buffer)
-  {
-    return new(buffer.Slice(0, 4), buffer.Slice(4, 8), buffer.Slice(8, buffer.Length));
-  }
-
-  public Request(Buffer id, Buffer token, Buffer parameters)
-  {
-    Token = token;
-    ID = id;
-    Parameters = parameters;
-  }
-
-  public Buffer Token { get; private set; }
-  public Buffer ID { get; private set; }
-  public Buffer Parameters { get; private set; }
-}
-
-public enum ResponseType
-{
-  Data, Exception
-}
-
-public class Response
-{
-  public static Buffer Serialize(Response response)
-  {
-    return Buffer.Concat(new Buffer[] { Buffer.FromByteArray(new byte[] { (byte)response.Type }), response.ID, response.Result });
-  }
-
-  public static Response Deserialize(Buffer buffer)
-  {
-    return new((ResponseType)buffer.Slice(0, 1)[0], buffer.Slice(1, 5), buffer.Slice(5, buffer.Length));
-  }
-
-  public Response(ResponseType type, Buffer id, Buffer result)
-  {
-    ID = id;
-    Type = type;
-    Result = result;
-  }
-
-  public Buffer ID { get; private set; }
-  public ResponseType Type { get; private set; }
-  public Buffer Result { get; private set; }
-}
-
 public class CommandReceivedEventHandlerArgs : EventArgs
 {
   public bool PreventDefault { get; set; } = false;
@@ -281,7 +181,7 @@ public class Connection
 
     while (RequestWaiter.Count > 0)
     {
-      RequestWaiter.Dequeue().SetException(new ReceiveRequestCancelledException());
+      RequestWaiter.Dequeue().SetException(new ReceivePendingRequestCancelledException());
     }
 
     await Disconnect(false);
